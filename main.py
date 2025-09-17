@@ -15,7 +15,7 @@ except Exception as e:
 
 app = FastAPI()
 
-# Now the server only needs the diagnose_image endpoint
+# Only the diagnose_image endpoint is needed for now
 @app.get("/")
 def read_root():
     return {"message": "PetAI Backend is running!"}
@@ -41,6 +41,5 @@ async def diagnose_image(file: UploadFile = File(...)):
         
         return {"diagnosis": response.text}
     except Exception as e:
-        # It's helpful to see the exact error in the logs
         print(f"Error in diagnose_image: {e}")
         raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")

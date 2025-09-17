@@ -1,7 +1,6 @@
 import os
 import google.generativeai as genai
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from io import BytesIO
 
@@ -28,7 +27,7 @@ async def diagnose_text(symptom_request: SymptomRequest):
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"Act as a veterinarian. Based on the following symptoms: '{symptom_request.symptoms}', provide a possible diagnosis for the pet. Respond in Greek."
-        response = model.generate_content(prompt)
+        response = await model.generate_content_async(prompt)
         return {"diagnosis": response.text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -38,10 +37,8 @@ async def diagnose_image(symptoms: str, file: UploadFile = File(...)):
     try:
         image_data = await file.read()
         
-        # Create a GenerativeModel and send the prompt with the image
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
         # Pass the image data directly to the model
+        model = genai.GenerativeModel('gemini-1.5-flash')
         image_part = {
             "mime_type": file.content_type,
             "data": image_data

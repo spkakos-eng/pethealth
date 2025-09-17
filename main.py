@@ -1,89 +1,54 @@
 import os
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import base64
-from openai import OpenAI
-import uvicorn
-from typing import List, Dict, Any, Union
+import requests
+import google.generativeai as genai
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from io import BytesIO
 
-load_dotenv()
+# Configure the API key from environment variables
+try:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not found in environment variables")
+    genai.configure(api_key=api_key)
+except Exception as e:
+    raise HTTPException(status_code=500, detail=f"API configuration error: {str(e)}")
 
 app = FastAPI()
 
-# Add CORS middleware to allow requests from your Flutter app
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins for development
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
-# Initialize the OpenAI client with the API key from the .env file
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+class SymptomRequest(BaseModel):
+    symptoms: str
 
 @app.get("/")
 def read_root():
-    return {"message": "Pet AI Backend is running!"}
+    return {"message": "PetAI Backend is running!"}
 
-@app.post("/analyze")
-async def analyze_pet(description: str = Form(None), image: UploadFile = File(None)):
-    if not description and not image:
-        raise HTTPException(status_code=400, detail="Please provide a description or an image.")
-    
-    messages: List[Dict[str, Any]] = [
-        {
-            "role": "system",
-            "content": "You are a helpful assistant for pet owners. You analyze symptoms and images to provide possible causes and suggest if a vet visit is needed. Always include the disclaimer: 'This information is for guidance only and does not replace a professional veterinary diagnosis. Please consult with a veterinarian for any health concerns.'"
-        }
-    ]
-
-    content_list: List[Dict[str, Any]] = []
-
-    if description:
-        content_list.append({"type": "text", "text": f"The owner describes the following: {description}"})
-    
-    if image:
-        # Check if the file is a valid image
-        if not image.content_type or not image.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="Invalid file type. Only images are allowed.")
-
-        # Read the image and encode it to base64
-        image_data = await image.read()
-        base64_image = base64.b64encode(image_data).decode('utf-8')
-        content_list.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{base64_image}"
-            }
-        })
-    
-    if not content_list:
-        raise HTTPException(status_code=400, detail="Please provide a description or an image.")
-
-    user_message: Dict[str, Union[str, List[Dict[str, Any]]]] = {
-        "role": "user",
-        "content": content_list
-    }
-    messages.append(user_message)
-
+@app.post("/diagnose_text/")
+async def diagnose_text(symptom_request: SymptomRequest):
     try:
-        # the newest OpenAI model is "gpt-5" which was released August 7, 2025.
-        # do not change this unless explicitly requested by the user
-        response = client.chat.completions.create(
-            model="gpt-5",
-            messages=messages,
-        )
-        # Assuming the first choice contains the response
-        diagnosis = response.choices[0].message.content
-        return {"diagnosis": diagnosis}
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"Act as a veterinarian. Based on the following symptoms: '{symptom_request.symptoms}', provide a possible diagnosis for the pet. Respond in Greek."
+        response = model.generate_content(prompt)
+        return {"diagnosis": response.text}
     except Exception as e:
-        # Log the exception for debugging
-        print(f"Error calling OpenAI API: {e}")
-        # Re-raise a more user-friendly HTTPException
-        raise HTTPException(status_code=500, detail=f"Failed to get a response from the AI model. Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# This block is for running the server directly with 'python main.py'
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=5000, reload=True)
+@app.post("/diagnose_image/")
+async def diagnose_image(symptoms: str, file: UploadFile = File(...)):
+    try:
+        # Read the image file and convert it to a BytesIO object
+        image_bytes = await file.read()
+        image_stream = BytesIO(image_bytes)
+
+        # Create a GenerativeModel and send the prompt with the image
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = [
+            f"Act as a veterinarian. Based on the provided image and the following symptoms: '{symptoms}', provide a possible diagnosis for the pet. Respond in Greek.",
+            image_stream
+        ]
+        response = model.generate_content(prompt)
+        return {"diagnosis": response.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

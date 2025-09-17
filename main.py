@@ -15,25 +15,13 @@ except Exception as e:
 
 app = FastAPI()
 
-class SymptomRequest(BaseModel):
-    symptoms: str
-
+# Now the server only needs the diagnose_image endpoint
 @app.get("/")
 def read_root():
     return {"message": "PetAI Backend is running!"}
 
-@app.post("/diagnose_text/")
-async def diagnose_text(symptom_request: SymptomRequest):
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = f"Act as a veterinarian. Based on the following symptoms: '{symptom_request.symptoms}', provide a possible diagnosis for the pet. Respond in Greek."
-        response = await model.generate_content_async(prompt)
-        return {"diagnosis": response.text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/diagnose_image/")
-async def diagnose_image(symptoms: str, file: UploadFile = File(...)):
+async def diagnose_image(file: UploadFile = File(...)):
     try:
         image_data = await file.read()
         
@@ -45,7 +33,7 @@ async def diagnose_image(symptoms: str, file: UploadFile = File(...)):
         }
         
         prompt = [
-            f"Act as a veterinarian. Based on the provided image and the following symptoms: '{symptoms}', provide a possible diagnosis for the pet. Respond in Greek.",
+            f"Act as a veterinarian. Based on the provided image, provide a possible diagnosis for the pet. Respond in Greek.",
             image_part
         ]
         

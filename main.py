@@ -1,6 +1,4 @@
 import os
-import base64
-import requests
 import google.generativeai as genai
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
@@ -38,17 +36,26 @@ async def diagnose_text(symptom_request: SymptomRequest):
 @app.post("/diagnose_image/")
 async def diagnose_image(symptoms: str, file: UploadFile = File(...)):
     try:
-        # Read the image file and convert it to a BytesIO object
-        image_bytes = await file.read()
-        image_stream = BytesIO(image_bytes)
-
+        image_data = await file.read()
+        
         # Create a GenerativeModel and send the prompt with the image
         model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Pass the image data directly to the model
+        image_part = {
+            "mime_type": file.content_type,
+            "data": image_data
+        }
+        
         prompt = [
             f"Act as a veterinarian. Based on the provided image and the following symptoms: '{symptoms}', provide a possible diagnosis for the pet. Respond in Greek.",
-            image_stream
+            image_part
         ]
-        response = model.generate_content(prompt)
+        
+        response = await model.generate_content_async(prompt)
+        
         return {"diagnosis": response.text}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # It's helpful to see the exact error in the logs
+        print(f"Error in diagnose_image: {e}")
+        raise HTTPException(status_code=500, detail=f"Backend Error: {str(e)}")
